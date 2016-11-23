@@ -34,7 +34,7 @@
 #endif
 
 #include <stdio.h>
-#include <videocore/transforms/Apple/H264Encode.h>
+#include <videocore/transforms/Apple/H264Encode+.h>
 #include <videocore/mixers/IVideoMixer.hpp>
 
 #if VERSION_OK==1
@@ -52,6 +52,8 @@ namespace videocore { namespace Apple {
                     VTEncodeInfoFlags infoFlags,
                     CMSampleBufferRef sampleBuffer )
     {
+        if (!sampleBuffer) return;
+        
         CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sampleBuffer);
         CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, false);
         CMTime pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
@@ -181,18 +183,14 @@ namespace videocore { namespace Apple {
 #endif
         VTCompressionSessionRef session = nullptr;
         @autoreleasepool {
-            SInt32 cvPixelFormatTypeValue = ::kCVPixelFormatType_32BGRA;
-            SInt8  boolYESValue = 0xFF;
-
-            CFDictionaryRef emptyDict = ::CFDictionaryCreate(kCFAllocatorDefault, nil, nil, 0, nil, nil);
-            CFNumberRef cvPixelFormatType = ::CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, (const void*)(&(cvPixelFormatTypeValue)));
-            CFNumberRef frameW = ::CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, (const void*)(&(m_frameW)));
-            CFNumberRef frameH = ::CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, (const void*)(&(m_frameH)));
-            CFNumberRef boolYES = ::CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt8Type, (const void*)(&(boolYESValue)));
             
-            const void *pixelBufferOptionsDictKeys[] = { kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,  kCVPixelBufferHeightKey, kCVPixelBufferOpenGLESCompatibilityKey, kCVPixelBufferIOSurfacePropertiesKey};
-            const void *pixelBufferOptionsDictValues[] = { cvPixelFormatType,  frameW, frameH, boolYES, emptyDict};
-                CFDictionaryRef pixelBufferOptions = ::CFDictionaryCreate(kCFAllocatorDefault, pixelBufferOptionsDictKeys, pixelBufferOptionsDictValues, 5, nil, nil);
+            
+            NSDictionary* pixelBufferOptions = @{ (NSString*) kCVPixelBufferPixelFormatTypeKey : //@(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+                                                  @(kCVPixelFormatType_32BGRA),
+                                                  (NSString*) kCVPixelBufferWidthKey : @(m_frameW),
+                                                  (NSString*) kCVPixelBufferHeightKey : @(m_frameH),
+                                                  (NSString*) kCVPixelBufferOpenGLESCompatibilityKey : @YES,
+                                                  (NSString*) kCVPixelBufferIOSurfacePropertiesKey : @{}};
             
             err = VTCompressionSessionCreate(
                                              kCFAllocatorDefault,
@@ -200,18 +198,11 @@ namespace videocore { namespace Apple {
                                              m_frameH,
                                              kCMVideoCodecType_H264,
                                              encoderSpecifications,
-                                             pixelBufferOptions,
+                                             (__bridge CFDictionaryRef)pixelBufferOptions,
                                              NULL,
                                              &vtCallback,
                                              this,
                                              &session);
-            
-            CFRelease(emptyDict);
-            CFRelease(cvPixelFormatType);
-            CFRelease(frameW);
-            CFRelease(frameH);
-            CFRelease(boolYES);
-            CFRelease(pixelBufferOptions);
             
         }
         
@@ -283,7 +274,6 @@ namespace videocore { namespace Apple {
             l->pushBuffer(data, size, md);
         }
 #endif
-        
     }
     void
     H264Encode::requestKeyframe()

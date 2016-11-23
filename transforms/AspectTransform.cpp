@@ -26,7 +26,8 @@
 #include <videocore/transforms/AspectTransform.h>
 #include <videocore/mixers/IVideoMixer.hpp>
 #include <videocore/system/pixelBuffer/IPixelBuffer.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/gtc/matrix_transform.hpp>
 
 
 namespace videocore {

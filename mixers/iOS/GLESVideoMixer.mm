@@ -38,7 +38,8 @@
 
 #include <CoreVideo/CoreVideo.h>
 
-#include <glm/gtc/matrix_transform.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/gtc/matrix_transform.hpp>
 
 #define SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
 
@@ -424,12 +425,12 @@ namespace videocore { namespace iOS {
         VideoBufferMetadata & md = dynamic_cast<VideoBufferMetadata&>(metadata);
         const int zIndex = md.getData<kVideoMetadataZIndex>();
         
-        const glm::mat4 mat = md.getData<kVideoMetadataMatrix>();
+        glm::mat4 const& mat = md.getData<kVideoMetadataMatrix>();
         
         if(zIndex < m_zRange.first) {
             m_zRange.first = zIndex;
         }
-        if(zIndex > m_zRange.second){
+        if(zIndex > m_zRange.second) {
             m_zRange.second = zIndex;
         }
         
@@ -550,8 +551,6 @@ namespace videocore { namespace iOS {
                         }
                     }
                     glFlush();
-                    glPopGroupMarkerEXT();
-                    
                     
                     auto lout = this->m_output.lock();
                     if(lout) {
@@ -559,15 +558,19 @@ namespace videocore { namespace iOS {
                         MetaData<'vide'> md(std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - m_epoch).count());
                         lout->pushBuffer((uint8_t*)this->m_pixelBuffer[!current_fb], sizeof(this->m_pixelBuffer[!current_fb]), md);
                     }
+
+                    glFinish();
+                    glPopGroupMarkerEXT();
+
                     this->m_mixing = false;
-        
                 });
                 current_fb = !current_fb;
             }
             
             m_mixThreadCond.wait_until(l, m_nextMixTime);
-                
         }
+
+        PERF_GL_sync({});
     }
     
     void

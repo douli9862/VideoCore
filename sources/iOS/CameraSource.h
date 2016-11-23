@@ -29,7 +29,8 @@
 #include <videocore/sources/ISource.hpp>
 #include <videocore/transforms/IOutput.hpp>
 #include <CoreVideo/CoreVideo.h>
-#include <glm/glm.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/glm.hpp>
 
 
 namespace videocore { namespace iOS {
@@ -114,10 +115,17 @@ namespace videocore { namespace iOS {
         
         bool setContinuousExposure(bool wantsContinuous);
         
+        /*!
+         *  for Mixer
+         */
+        int zIndex() { return m_zIndex; }
+
+        void setZIndex(int zIndex) { m_zIndex = zIndex; }
+        
         
     public:
         /*! Used by Objective-C Capture Session */
-        void bufferCaptured(CVPixelBufferRef pixelBufferRef);
+        void bufferCaptured(CVPixelBufferRef pixelBufferRef, int orientation = 0);
         
         /*! Used by Objective-C Device/Interface Orientation Notifications */
         void reorientCamera();
@@ -149,7 +157,8 @@ namespace videocore { namespace iOS {
         bool m_torchOn;
         bool m_useInterfaceOrientation;
         bool m_orientationLocked;
-
+        
+        int  m_zIndex;
     };
     
 }

@@ -31,8 +31,9 @@
 #import <OpenGLES/ES2/gl.h>
 #import <OpenGLES/ES2/glext.h>
 
-#import <glm/glm.hpp>
-#import <glm/gtc/matrix_transform.hpp>
+// glm fix for cocoapods
+#import <../Public/glm/glm.hpp>
+#import <../Public/glm/gtc/matrix_transform.hpp>
 
 #include <atomic>
 
@@ -48,6 +49,8 @@
     int _currentBuffer;
     
     std::atomic<bool> _paused;
+    std::atomic<bool> _captureOnce;
+    std::atomic<int> _renderqlen;
     
     CVPixelBufferRef _currentRef[2];
     CVOpenGLESTextureCacheRef _cache;
@@ -57,6 +60,7 @@
 @property (nonatomic, strong) EAGLContext* context;
 @property (nonatomic) CAEAGLLayer* glLayer;
 @end
+
 @implementation VCPreviewView
 
 #pragma mark - UIView overrides
@@ -93,6 +97,8 @@
     
     if(!self.context) {
         NSLog(@"Context creation failed");
+    } else {
+        NSLog(@"Context creation succeeded");
     }
     self.autoresizingMask = 0xFF;
     
@@ -105,12 +111,16 @@
     __block VCPreviewView* bSelf = self;
     
     _paused = NO;
+    _captureOnce = NO;
+    _renderqlen = 0;
     
     dispatch_async(dispatch_get_main_queue(), ^{
         [bSelf setupGLES];
     });
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(notification:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(notification:) name:UIApplicationWillEnterForegroundNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(notification:) name:UIApplicationWillResignActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(notification:) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 - (void) dealloc
 {
@@ -154,18 +164,20 @@
     [self generateGLESBuffers];
 }
 - (void) notification: (NSNotification*) notification {
-    if([notification.name isEqualToString:UIApplicationDidEnterBackgroundNotification]) {
+    if([notification.name isEqualToString:UIApplicationDidEnterBackgroundNotification]
+       || [notification.name isEqualToString:UIApplicationWillResignActiveNotification]) {
         _paused = true;
-    } else if([notification.name isEqualToString:UIApplicationWillEnterForegroundNotification]) {
+    } else if([notification.name isEqualToString:UIApplicationWillEnterForegroundNotification]
+              || [notification.name isEqualToString:UIApplicationDidBecomeActiveNotification]) {
         _paused = false;
     }
 }
 #pragma mark - Public Methods
-
 - (void) drawFrame:(CVPixelBufferRef)pixelBuffer
 {
-    
-    if(_paused) return;
+    if(_paused || _renderqlen >= 2) return;
+
+    _renderqlen++;
     
     bool updateTexture = false;
     
@@ -188,6 +200,7 @@
     __block VCPreviewView* bSelf = self;
     
     dispatch_async(dispatch_get_main_queue(), ^{
+        bSelf->_renderqlen--;
         
         EAGLContext* current = [EAGLContext currentContext];
         [EAGLContext setCurrentContext:bSelf.context];
@@ -257,9 +270,24 @@
         }
         [EAGLContext setCurrentContext:current];
         CVOpenGLESTextureCacheFlush(_cache,0);
+
+        // screenshot
+        if (bSelf->_captureOnce) {
+            bSelf->_captureOnce = false;
+
+            if (bSelf.screenShotDelegate != nil) {
+                [bSelf.screenShotDelegate didGotScreenShot:bSelf->_currentRef[currentBuffer]];
+            }
+        }
     });
     
 }
+
+- (void) takeScreenShot
+{
+    _captureOnce = true;
+}
+
 #pragma mark - Private Methods
 
 - (void) generateGLESBuffers

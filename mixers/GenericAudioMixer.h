@@ -160,7 +160,6 @@ namespace videocore {
         
         double m_frameDuration;
         double m_bufferDuration;
-
         
         std::thread m_mixThread;
         std::mutex  m_mixMutex;

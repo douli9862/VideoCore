@@ -32,7 +32,8 @@
 #define videocore_IVideoFilter_hpp
 
 #include <videocore/filters/IFilter.hpp>
-#include <glm/glm.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/glm.hpp>
 
 #define KERNEL(_language, _target, _kernelstr) if(_language == _target){ do { return # _kernelstr ; } while(0); }
 

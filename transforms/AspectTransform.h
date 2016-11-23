@@ -27,7 +27,8 @@
 
 #include <iostream>
 #include <videocore/transforms/ITransform.hpp>
-#include <glm/glm.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/glm.hpp>
 
 namespace videocore {
     

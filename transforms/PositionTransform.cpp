@@ -25,7 +25,8 @@
 
 
 #include <videocore/transforms/PositionTransform.h>
-#include <glm/gtc/matrix_transform.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/gtc/matrix_transform.hpp>
 #include <videocore/mixers/IVideoMixer.hpp>
 namespace videocore {
     

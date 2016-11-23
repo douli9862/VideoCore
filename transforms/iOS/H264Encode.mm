@@ -28,6 +28,20 @@
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 
+#if TARGET_OS_IPHONE
+#if defined(__IPHONE_8_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_8_0
+#define VERSION_OK 1
+#else
+#define VERSION_OK 0
+#endif
+#else
+#define VERSION_OK (1090 <= MAC_OS_X_VERSION_MAX_ALLOWED)
+#endif
+
+#if VERSION_OK==1
+#include <VideoToolbox/VideoToolbox.h>
+#endif
+
 #include <sys/stat.h>
 
 namespace videocore { namespace iOS {
@@ -81,8 +95,11 @@ namespace videocore { namespace iOS {
                 settings = @{AVVideoCodecKey: AVVideoCodecH264,
                              AVVideoCompressionPropertiesKey: @{AVVideoAverageBitRateKey: @(m_bitrate),
                                                                 AVVideoMaxKeyFrameIntervalKey: @(m_fps*2),
-                                                                AVVideoProfileLevelKey: AVVideoProfileLevelH264Baseline41/*,
-                                                                AVVideoAllowFrameReorderingKey: @NO*/
+                                                                AVVideoProfileLevelKey: AVVideoProfileLevelH264Baseline41,
+                                                                /*AVVideoAllowFrameReorderingKey: @NO,*/
+                                                                (__bridge NSString *)kVTCompressionPropertyKey_PixelTransferProperties: @{
+                                                                        (__bridge NSString *)kVTPixelTransferPropertyKey_ScalingMode: (__bridge NSString *)kVTScalingMode_Letterbox
+                                                                        }
                                                                 },
                              AVVideoWidthKey: @(m_frameW),
                              AVVideoHeightKey: @(m_frameH)
@@ -91,7 +108,10 @@ namespace videocore { namespace iOS {
                 settings = @{AVVideoCodecKey: AVVideoCodecH264,
                              AVVideoCompressionPropertiesKey: @{AVVideoAverageBitRateKey: @(m_bitrate),
                                                                 AVVideoMaxKeyFrameIntervalKey: @(m_fps*2),
-                                                                AVVideoProfileLevelKey: AVVideoProfileLevelH264Baseline31
+                                                                AVVideoProfileLevelKey: AVVideoProfileLevelH264Baseline31,
+                                                                (__bridge NSString *)kVTCompressionPropertyKey_PixelTransferProperties: @{
+                                                                        (__bridge NSString *)kVTPixelTransferPropertyKey_ScalingMode: (__bridge NSString *)kVTScalingMode_Letterbox
+                                                                        }
                                                                 },
                              AVVideoWidthKey: @(m_frameW),
                              AVVideoHeightKey: @(m_frameH)
@@ -145,12 +165,16 @@ namespace videocore { namespace iOS {
             m_currentWriter = !m_currentWriter;
             m_frameCount = 0;
             m_lastFilePos = 36;
+            DLog("swapWriters true\n");
             m_queue.enqueue([this,old]() {
 #if 0
                 [(id)this->m_assetWriters[old] finishWritingWithCompletionHandler:^{
 #endif
+                    std::unique_lock<std::mutex> l(m_encodeMutex);
+
                     this->teardownWriter(old);
                     this->setupWriter(old);
+                    DLog("teardownWriter, setupWriter 1, old:%d.\n", old);
 #if 0
                 }];
 #endif
@@ -162,6 +186,8 @@ namespace videocore { namespace iOS {
                 int old = m_currentWriter;
                 m_currentWriter = !m_currentWriter;
                 int lastFrame = m_frameCount;
+                DLog("swapWriters m_frameCount :%d\n",m_frameCount);
+
                 m_frameCount = 0;
                 m_lastFilePos = 36;
                 
@@ -170,12 +196,16 @@ namespace videocore { namespace iOS {
                 time.value = lastFrame;
                 time.flags = 1;
                 m_queue.enqueue([=](){
+                    std::unique_lock<std::mutex> l(m_encodeMutex);
                     [(id)m_assetWriters[old] endSessionAtSourceTime:time];
                     [(id)m_assetWriters[old] finishWritingWithCompletionHandler:^{
-                        
+                        {
+                        std::unique_lock<std::mutex> l(m_encodeMutex);
                         this->extractSpsAndPps(old);
                         this->teardownWriter(old);
                         this->setupWriter(old);
+                            DLog("teardownWriter, setupWriter, old:%d.\n", old);
+                        }
                     }];
                 });
             }
@@ -292,6 +322,7 @@ namespace videocore { namespace iOS {
     void
     H264Encode::pushBuffer(const uint8_t *const data, size_t size, videocore::IMetadata &metadata)
     {
+        std::unique_lock<std::mutex> l(m_encodeMutex);
         
         releaseFrame(metadata); // Send the next queued frame
         
@@ -305,20 +336,59 @@ namespace videocore { namespace iOS {
             presentationTime.flags = kCMTimeFlags_Valid;
             
             if(!m_assetWriters[m_currentWriter] || !m_pixelBuffers[m_currentWriter] || [(id)m_assetWriters[m_currentWriter] status] != 1) {
+                DLog("swapWriters force = true.\n");
                 swapWriters(true);
                 return ;
             }
             
+
             AVAssetWriterInputPixelBufferAdaptor* adaptor = static_cast<AVAssetWriterInputPixelBufferAdaptor*>(m_pixelBuffers[m_currentWriter]);
             BOOL ready = adaptor.assetWriterInput.readyForMoreMediaData;
             
             if(!ready) {
                 return;
             }
-            
+                        
             CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
-            [(id)m_pixelBuffers[m_currentWriter] appendPixelBuffer:pb withPresentationTime:presentationTime];
+            int width = (int) CVPixelBufferGetWidth(pb);
+            int height = (int) CVPixelBufferGetHeight(pb);
+            DLog("pixelBufferRef is m_currentWriter:%d, width*height[%d*%d].\n", m_currentWriter, width, height);
+            uint8_t* data = (uint8_t*)CVPixelBufferGetBaseAddress(pb);
+            if (NULL == data){
+                DLog("data of pixelBufferRef is NULL.\n");
+                CVPixelBufferUnlockBaseAddress(pb,kCVPixelBufferLock_ReadOnly);
+                return;
+            }
+            
+#if 0
+            BOOL bRet = [(id)m_pixelBuffers[m_currentWriter] appendPixelBuffer:pb withPresentationTime:presentationTime];
+            if(!bRet){
+                DLog("pixelBufferRef is bRet:%d.\n", bRet);
+//                this->teardownWriter(m_currentWriter);
+//                this->setupWriter(m_currentWriter);
+                swapWriters(true);
+                return;
+            }
+#else
+            
+            @try {
+                BOOL bRet = [(id)m_pixelBuffers[m_currentWriter] appendPixelBuffer:pb withPresentationTime:presentationTime];
+                if(!bRet){
+                    DLog("pixelBufferRef is m_currentWriter:%d, bRet.\n", m_currentWriter, bRet);
+                }
+            } @catch (NSException* e) {
+                DLog("pixelBufferRef is e.\n");
+                //teardownWriter(m_currentWriter);
+//                this->teardownWriter(m_currentWriter);
+//                this->setupWriter(m_currentWriter);
+                swapWriters(true);
+                return;
+            }
+#endif
+            
+            
             CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+            
             
             
             // Open the file the h.264 data is being written to.
@@ -386,6 +456,8 @@ namespace videocore { namespace iOS {
     void
     H264Encode::setBitrate(int bitrate)
     {
+        std::unique_lock<std::mutex> l(m_encodeMutex);
+
         m_bitrate = bitrate;
         teardownWriter(!m_currentWriter);
         setupWriter(!m_currentWriter);

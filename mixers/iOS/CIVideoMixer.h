@@ -24,8 +24,8 @@
  */
 
 
-#ifndef __videocore__GLESVideoMixer__
-#define __videocore__GLESVideoMixer__
+#ifndef __videocore__CIVideoMixer__
+#define __videocore__CIVideoMixer__
 
 #include <iostream>
 #include <videocore/mixers/IVideoMixer.hpp>
@@ -44,37 +44,28 @@
 
 namespace videocore { namespace iOS {
  
-    struct SourceBuffer
+    struct CISourceBuffer
     {
-        SourceBuffer() : m_currentTexture(nullptr), m_pixelBuffers() { };
-        ~SourceBuffer() { };
-        void setBuffer(Apple::PixelBufferRef ref, CVOpenGLESTextureCacheRef textureCache, JobQueue& jobQueue, void* glContext);
+        CISourceBuffer() : m_time(), m_blends() { }
+        ~CISourceBuffer();
+
+        void setBuffer(Apple::PixelBufferRef ref);
+        Apple::PixelBufferRef currentBuffer() const { return m_currentBuffer; }
         
-        CVOpenGLESTextureRef currentTexture() const { return m_currentTexture; };
-        Apple::PixelBufferRef currentBuffer() const { return m_currentBuffer; };
-        
-        bool blends() const { return m_blends; };
-        void setBlends(bool blends) { m_blends = blends; };
+        bool blends() const { return m_blends; }
+        void setBlends(bool blends) { m_blends = blends; }
     private:
-        typedef struct __Buffer_ {
-            __Buffer_(Apple::PixelBufferRef buf) : texture(nullptr), buffer(buf) {};
-            ~__Buffer_() { if(texture) { CFRelease(texture); } };
-                
-            Apple::PixelBufferRef buffer;
-            CVOpenGLESTextureRef texture;
-            std::chrono::steady_clock::time_point time;
-        } Buffer_;
-        
-        std::map< CVPixelBufferRef, Buffer_ >   m_pixelBuffers;
+
         Apple::PixelBufferRef                   m_currentBuffer;
-        CVOpenGLESTextureRef                    m_currentTexture;
+        std::chrono::steady_clock::time_point   m_time;
         bool                                    m_blends;
     };
+
     /*
      *  Takes CVPixelBufferRef inputs and outputs a single CVPixelBufferRef that has been composited from the various sources.
      *  Sources must output VideoBufferMetadata with their buffers. This compositor uses homogeneous coordinates.
      */
-    class GLESVideoMixer : public IVideoMixer
+    class CIVideoMixer : public IVideoMixer
     {
       
     public:
@@ -87,14 +78,13 @@ namespace videocore { namespace iOS {
          *                          The parameter of this method will be a pointer to its EAGLContext.  This is useful for
          *                          applications that may be capturing GLES data and do not wish to capture the mixer.
          */
-        GLESVideoMixer(int frame_w,
-                       int frame_h,
-                       double frameDuration,
-                       CVPixelBufferPoolRef pixelBufferPool = nullptr,
-                       std::function<void(void*)> excludeContext = nullptr);
+        CIVideoMixer(int frame_w,
+                     int frame_h,
+                     double frameDuration,
+                     CVPixelBufferPoolRef pixelBufferPool = nullptr);
         
         /*! Destructor */
-        ~GLESVideoMixer();
+        ~CIVideoMixer();
         
         /*! IMixer::registerSource */
         void registerSource(std::shared_ptr<ISource> source,
@@ -108,7 +98,7 @@ namespace videocore { namespace iOS {
         
         void sync();
         
-        FilterFactory& filterFactory() { return m_filterFactory; };
+        FilterFactory& filterFactory() { return m_filterFactory; }
         
         /*! IOutput::pushBuffer */
         void pushBuffer(const uint8_t* const data,
@@ -122,7 +112,7 @@ namespace videocore { namespace iOS {
         void setEpoch(const std::chrono::steady_clock::time_point epoch) {
             m_epoch = epoch;
             m_nextMixTime = epoch;
-        };
+        }
         
         void start();
         
@@ -148,20 +138,16 @@ namespace videocore { namespace iOS {
         void mixThread();
         
         /*! 
-         * Setup the OpenGL ES context, shaders, and state.
-         *
-         * \param excludeContext An optional lambda method that is called when the mixer generates its GL ES context.
-         *                       The parameter of this method will be a pointer to its EAGLContext.  This is useful for
-         *                       applications that may be capturing GLES data and do not wish to capture the mixer.
+         * Setup the mixer.
          */
-        void setupGLES(std::function<void(void*)> excludeContext);
+        void setup();
         
         
         
     private:
         
         FilterFactory m_filterFactory;
-        JobQueue m_glJobQueue;
+        JobQueue m_ciJobQueue;
         
         double m_bufferDuration;
         
@@ -175,12 +161,8 @@ namespace videocore { namespace iOS {
         
         CVPixelBufferPoolRef m_pixelBufferPool;
         CVPixelBufferRef m_pixelBuffer[2];
-        CVOpenGLESTextureCacheRef m_textureCache;
-        CVOpenGLESTextureRef      m_texture[2];
         
         void*       m_callbackSession;
-        void*       m_glesCtx;
-        unsigned    m_vbo, m_vao, m_fbo[2], m_prog, m_uMat;
         
         
         int m_frameW;
@@ -190,8 +172,11 @@ namespace videocore { namespace iOS {
         std::map<int, std::vector< std::size_t >> m_layerMap;
         
         std::map< std::size_t, glm::mat4 >               m_sourceMats;
+        std::map< std::size_t, int >                     m_sourceOrientations;
         std::unordered_map<std::size_t, IVideoFilter*>   m_sourceFilters;
-        std::unordered_map<std::size_t, SourceBuffer>    m_sourceBuffers;
+        std::unordered_map<std::size_t, CISourceBuffer>  m_sourceBuffers;
+        
+        std::mutex             m_srcBufMapMutex;
         
         std::chrono::steady_clock::time_point m_syncPoint;
         std::chrono::steady_clock::time_point m_epoch;
@@ -208,4 +193,4 @@ namespace videocore { namespace iOS {
     
 }
 }
-#endif /* defined(__videocore__GLESVideoMixer__) */
+#endif /* defined(__videocore__CIVideoMixer__) */

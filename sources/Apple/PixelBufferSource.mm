@@ -21,8 +21,9 @@
  */
 #include <videocore/sources/Apple/PixelBufferSource.h>
 #include <videocore/mixers/IVideoMixer.hpp>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+// glm fix for cocoapods
+#include <../Public/glm/glm.hpp>
+#include <../Public/glm/gtc/matrix_transform.hpp>
 #include <videocore/system/pixelBuffer/Apple/PixelBuffer.h>
 
 #include <CoreVideo/CoreVideo.h>
@@ -71,7 +72,7 @@ namespace videocore { namespace Apple {
             
             glm::mat4 mat = glm::mat4(1.f);
             VideoBufferMetadata md(0.);
-            md.setData(4, mat, true, shared_from_this());
+            md.setData(4, mat, true, 0, shared_from_this());
             auto pixelBuffer = std::make_shared<Apple::PixelBuffer>((CVPixelBufferRef)m_pixelBuffer, false);
             outp->pushBuffer((const uint8_t*)&pixelBuffer, sizeof(pixelBuffer), md);
         }

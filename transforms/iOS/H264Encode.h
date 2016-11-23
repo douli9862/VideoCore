@@ -69,6 +69,7 @@ namespace videocore { namespace iOS {
 
         
     private:
+        std::mutex             m_encodeMutex;
         void*                  m_assetWriters[2];
         void*                  m_pixelBuffers[2];
         

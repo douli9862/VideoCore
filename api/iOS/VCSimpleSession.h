@@ -72,8 +72,10 @@ typedef NS_ENUM(NSInteger, VCFilter) {
 @protocol VCSessionDelegate <NSObject>
 @required
 - (void) connectionStatusChanged: (VCSessionState) sessionState;
+
 @optional
 - (void) didAddCameraSource:(VCSimpleSession*)session;
+- (void) didGotScreenShot:(CGImageRef)image;
 
 - (void) detectedThroughput: (NSInteger) throughputInBytesPerSecond; //Depreciated, should use method below
 - (void) detectedThroughput: (NSInteger) throughputInBytesPerSecond videoRate:(NSInteger) rate;
@@ -152,5 +154,7 @@ typedef NS_ENUM(NSInteger, VCFilter) {
 
 - (void) addPixelBufferSource: (UIImage*) image
                      withRect: (CGRect) rect;
+
+- (void) takeScreenShot;
 
 @end
