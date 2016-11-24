@@ -9,6 +9,7 @@ target 'SampleBroadcaster' do
   pod 'VideoCore', path: '../..'
 end
 
+
 target 'SampleBroadcastUpload' do
   #pod 'FFmpeg', '~>2.8.3'
   pod 'VideoCore', path: '../..'
